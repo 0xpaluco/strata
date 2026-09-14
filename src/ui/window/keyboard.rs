@@ -133,7 +133,9 @@ impl Dispatcher {
             .or_else(|| self.context_menu_command(&event))
             .or_else(|| {
                 // Search rows own navigation; directory commands must not act on hidden selections.
-                (self.view.selected_search_results().is_some() && !event.text_has_focus())
+                (self.view.selected_search_results().is_some()
+                    && !event.text_has_focus()
+                    && event.key != Key::Delete)
                     .then_some(Propagation::Proceed)
             })
             .or_else(|| self.text_input(&event))
