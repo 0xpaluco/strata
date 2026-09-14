@@ -368,7 +368,13 @@ fn columns_recursive_multi_selection_accepts_every_selected_file() {
                     .is_some_and(|column| !column.loading)
             });
 
+            // Startup's deferred focus restoration must precede simulated filter input.
+            let initialized = Rc::new(Cell::new(false));
+            let initialized_at_idle = initialized.clone();
+            glib::idle_add_local_once(move || initialized_at_idle.set(true));
+            wait_until(|| initialized.get());
             state.view.show_filter_with_query("nested");
+            wait_until(|| state.view.selected_search_results().is_some());
             wait_until(|| {
                 select_first_two_file_list_items(&state.view.widget());
                 state
