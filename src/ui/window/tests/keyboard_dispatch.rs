@@ -391,3 +391,42 @@ fn shift_after_escape_starts_on_the_focused_entry() {
         },
     );
 }
+
+#[test]
+fn arrow_scope_preference_keeps_up_in_the_file_list() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::arrow_scope_preference_keeps_up_in_the_file_list",
+        || {
+            let fixtures = [KeyboardFixture::new(), KeyboardFixture::new()];
+            let preferences = ThemeManager::shared();
+            assert!(preferences.arrow_navigation_scoped());
+            for mode in [BrowserMode::List, BrowserMode::Icons, BrowserMode::Columns] {
+                for scoped in [true, false, true] {
+                    preferences.set_arrow_navigation_scoped(scoped);
+                    for fixture in &fixtures {
+                        fixture.view.set_view_mode(mode);
+                        fixture.window.present();
+                        fixture.view.browser().select(0, 0);
+                        fixture.view.browser().focus_active();
+                        wait_until(|| {
+                            fixture.view.item_view_has_focus() && fixture.selected() == [0]
+                        });
+
+                        fixture.press(Key::Up, ModifierType::empty());
+                        assert_eq!(fixture.view.item_view_has_focus(), scoped, "{mode:?}");
+                        assert_eq!(
+                            fixture.view.header_actions_have_focus(),
+                            !scoped,
+                            "{mode:?}"
+                        );
+
+                        fixture.view.browser().focus_active();
+                        wait_until(|| fixture.view.item_view_has_focus());
+                        fixture.press(Key::Left, ModifierType::empty());
+                        assert_eq!(fixture.view.item_view_has_focus(), scoped, "{mode:?}");
+                    }
+                }
+            }
+        },
+    );
+}
