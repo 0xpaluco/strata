@@ -1929,6 +1929,69 @@ fn selecting_entries_by_name_preserves_the_full_matching_selection() {
 }
 
 #[test]
+fn selecting_named_entries_reveals_only_requested_hidden_matches() {
+    for by_location in [false, true] {
+        for names in [
+            vec![".secret.txt"],
+            vec!["visible.txt", ".secret.txt"],
+            vec!["visible.txt"],
+            vec!["missing.txt"],
+            vec![],
+        ] {
+            let source = ScriptedSource::scripted(vec!["visible.txt", ".secret.txt"], Vec::new());
+            let browser = Browser::new(Rc::new(source));
+            browser.navigate(Location::local("/fixture"));
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let observed = events.clone();
+            browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+            let found = if by_location {
+                let locations: Vec<_> = names
+                    .iter()
+                    .map(|name| Location::local(format!("/fixture/{name}")))
+                    .collect();
+                browser.select_entries_by_location_at(0, &locations)
+            } else {
+                let names: Vec<_> = names.iter().map(|name| (*name).to_owned()).collect();
+                browser.select_entries_by_name_at(0, &names)
+            };
+
+            let reveals_hidden = names.contains(&".secret.txt");
+            assert_eq!(browser.preferences().show_hidden, reveals_hidden);
+            assert_eq!(found, !names.is_empty() && !names.contains(&"missing.txt"));
+            if found {
+                let mut selected: Vec<_> = browser
+                    .selected_positions(0)
+                    .into_iter()
+                    .map(|position| {
+                        browser
+                            .entry_at(0, position)
+                            .expect("selected entry")
+                            .display_name
+                    })
+                    .collect();
+                selected.sort();
+                let mut expected = names.clone();
+                expected.sort();
+                assert_eq!(selected, expected);
+            }
+            let events = events.borrow();
+            let hidden_event = events.iter().position(|event| {
+                matches!(event, BrowserEvent::HiddenToggled { show_hidden: true })
+            });
+            assert_eq!(hidden_event.is_some(), reveals_hidden);
+            if let Some(hidden_event) = hidden_event {
+                let selection_event = events
+                    .iter()
+                    .position(|event| matches!(event, BrowserEvent::SelectionSetChanged { .. }))
+                    .expect("selection event");
+                assert!(hidden_event < selection_event);
+            }
+        }
+    }
+}
+
+#[test]
 fn reload_active_preserves_a_multi_selection() {
     let browser = Browser::new(Rc::new(RestoredSortingSource));
     browser.navigate(Location::local("/fixture"));
