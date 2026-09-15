@@ -54,6 +54,12 @@ const TARGETS: &[Target] = &[
         aliases: "launch files quick preview",
     },
     Target {
+        id: "sidebar-places",
+        page: "general",
+        title: "Items shown in sidebar",
+        aliases: "sidebar places hide show home trash network shares desktop documents downloads pictures videos folder",
+    },
+    Target {
         id: "opening",
         page: "general",
         title: "Opening items",
