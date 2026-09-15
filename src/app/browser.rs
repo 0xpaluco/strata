@@ -21,6 +21,8 @@ use crate::{
     },
 };
 
+pub use crate::app::navigation::ColumnEntryCounts;
+
 mod loading;
 mod operation_events;
 mod operation_updates;
@@ -1200,6 +1202,10 @@ impl Browser {
 
     pub fn entry_at(&self, depth: usize, position: usize) -> Option<FileEntry> {
         self.state.borrow().entry_at(depth, position)
+    }
+
+    pub fn column_entry_counts(&self, depth: usize) -> Option<ColumnEntryCounts> {
+        self.state.borrow().column_entry_counts(depth)
     }
 
     pub fn with_entries<R>(
