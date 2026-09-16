@@ -1356,6 +1356,8 @@ impl ViewState {
         reveal_button.add_css_class("column-peek-target");
         reveal_button.set_focusable(false);
         reveal_button.set_focus_on_click(false);
+        // Let row drag sources receive presses through the peek overlay.
+        reveal_button.set_can_target(false);
         reveal_button.set_cursor_from_name(Some("pointer"));
         reveal_button.set_visible(false);
         crate::ui::accessibility::set_label(
