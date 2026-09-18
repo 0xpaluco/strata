@@ -185,6 +185,8 @@ struct Preferences {
     #[serde(default)]
     preview_text_wrap: bool,
     #[serde(default)]
+    preview_autoplay: bool,
+    #[serde(default)]
     auto_refresh_interval: u32,
     #[serde(default = "crate::sandbox::browser::default_worker_limit")]
     thumbnail_workers: usize,
@@ -247,6 +249,7 @@ impl Default for Preferences {
             preview_muted: false,
             preview_volume: default_full_volume(),
             preview_text_wrap: false,
+            preview_autoplay: false,
             auto_refresh_interval: 0,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
@@ -676,6 +679,15 @@ impl ThemeManager {
 
     pub fn set_preview_text_wrap(&self, wrapped: bool) {
         self.preferences.borrow_mut().preview_text_wrap = wrapped;
+        self.save_preferences();
+    }
+
+    pub fn preview_autoplay(&self) -> bool {
+        self.preferences.borrow().preview_autoplay
+    }
+
+    pub fn set_preview_autoplay(&self, autoplay: bool) {
+        self.preferences.borrow_mut().preview_autoplay = autoplay;
         self.save_preferences();
     }
 
