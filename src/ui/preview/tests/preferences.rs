@@ -4,7 +4,7 @@ use super::super::*;
 use crate::{
     services::{MediaPreviewSize, SandboxedMedia},
     test_support::gtk_test,
-    ui::theme::ThemeManager,
+    ui::preferences::PreferenceManager,
 };
 
 fn media_entry(name: &str) -> crate::model::FileEntry {
@@ -76,8 +76,8 @@ fn saved_and_live_wrap_preferences_reach_existing_and_rebuilt_previews() {
     gtk_test(
         "ui::preview::tests::preferences::saved_and_live_wrap_preferences_reach_existing_and_rebuilt_previews",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let drawers = [true, false].map(|browser| {
                 let drawer = PreviewDrawer::new(Rc::new(super::NoopPreviewProvider), browser);
                 render_text(&drawer);
@@ -148,8 +148,8 @@ fn document_defaults_apply_before_settings_and_after_reopening_in_two_windows() 
     gtk_test(
         "ui::preview::tests::preferences::document_defaults_apply_before_settings_and_after_reopening_in_two_windows",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             assert!(!manager.render_documents_by_default());
             let fixture = tempfile::tempdir().expect("document fixtures");
             std::fs::write(
@@ -265,8 +265,8 @@ fn saved_and_live_audio_preferences_reach_every_open_player() {
     gtk_test(
         "ui::preview::tests::preferences::saved_and_live_audio_preferences_reach_every_open_player",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             let mut players = Vec::new();
             for browser in [true, false] {
                 let drawer = PreviewDrawer::new(
@@ -335,7 +335,7 @@ fn autoplay_preference_gates_new_media_previews_and_defaults_off() {
     gtk_test(
         "ui::preview::tests::preferences::autoplay_preference_gates_new_media_previews_and_defaults_off",
         || {
-            let manager = ThemeManager::shared();
+            let manager = PreferenceManager::shared();
             assert!(!manager.preview_autoplay(), "autoplay is off by default");
             let drawer = PreviewDrawer::new(Rc::new(super::NoopPreviewProvider), true);
 
@@ -386,8 +386,8 @@ fn saved_autoplay_and_live_changes_apply_to_reopened_media_in_two_windows() {
     gtk_test(
         "ui::preview::tests::preferences::saved_autoplay_and_live_changes_apply_to_reopened_media_in_two_windows",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let manager = ThemeManager::shared();
+            PreferenceManager::seed_saved_preferences_for_test();
+            let manager = PreferenceManager::shared();
             assert!(manager.preview_autoplay());
             let drawers = [true, false]
                 .map(|browser| PreviewDrawer::new(Rc::new(super::NoopPreviewProvider), browser));

@@ -4,7 +4,7 @@ use super::*;
 use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
-use crate::ui::theme::TextSize;
+use crate::ui::preferences::TextSize;
 
 struct PdfPreview;
 
@@ -39,7 +39,7 @@ fn discrete_scroll_steps_respect_modifiers_and_text_size_limits() {
         "ui::window::tests::keyboard_dispatch::scroll_zoom::discrete_scroll_steps_respect_modifiers_and_text_size_limits",
         || {
             let fixture = KeyboardFixture::new();
-            let preferences = ThemeManager::shared();
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
             let ctrl = ModifierType::CONTROL_MASK;
             for (initial, modifiers, dy, expected, handled) in [
                 (13, ctrl, -1.0, 14, true),
@@ -83,7 +83,7 @@ fn pdf_pages_and_scrollbars_keep_scroll_zoom_ownership() {
                 }
                 parent = widget.parent();
             };
-            let preferences = ThemeManager::shared();
+            let preferences = crate::ui::preferences::PreferenceManager::shared();
             let initial = preferences.text_size();
             for target in [
                 list,

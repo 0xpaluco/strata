@@ -82,7 +82,7 @@ pub(super) fn install(window: &gtk::ApplicationWindow, sidebar: &SidebarView, bi
 }
 
 pub(super) fn handle_text_zoom_scroll(
-    preferences: &crate::ui::theme::ThemeManager,
+    preferences: &crate::ui::preferences::PreferenceManager,
     modifiers: Modifiers,
     target: Option<gtk::Widget>,
     dy: f64,
