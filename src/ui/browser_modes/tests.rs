@@ -32,6 +32,19 @@ impl super::ModeViews {
             self.list_click_activation.get(),
             manager.click_activation(BrowserMode::List)
         );
+        assert_eq!(
+            self.icons_thumbnail_size.get(),
+            manager.icons_thumbnail_size()
+        );
+        for pane in &self.icons_panes {
+            assert_eq!(
+                pane.thumbnail_scale
+                    .as_ref()
+                    .expect("Icons size control")
+                    .value(),
+                f64::from(manager.icons_thumbnail_size())
+            );
+        }
     }
 }
 

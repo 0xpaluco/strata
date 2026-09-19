@@ -245,6 +245,7 @@ struct Pane {
     section: PaneSection,
     sections: Rc<RefCell<Vec<PaneSection>>>,
     icons: Option<Rc<IconsContext>>,
+    thumbnail_scale: Option<gtk::Scale>,
     targets: super::marquee::MarqueeTargets,
     /// Set while a reload has detached the pane's models from their views.
     detached: Rc<Cell<bool>>,
@@ -1111,6 +1112,20 @@ impl ModeViews {
         }
     }
 
+    pub fn set_icons_thumbnail_size(&mut self, size: i32) {
+        if self.icons_thumbnail_size.get() == size {
+            return;
+        }
+        match self
+            .icons_panes
+            .first()
+            .and_then(|pane| pane.thumbnail_scale.as_ref())
+        {
+            Some(scale) => scale.set_value(f64::from(size)),
+            None => self.icons_thumbnail_size.set(size),
+        }
+    }
+
     fn visible_panes(&self) -> Vec<&Pane> {
         match self.mode {
             BrowserMode::Columns => Vec::new(),
@@ -1928,6 +1943,7 @@ fn build_icons_pane(
             let size = scale.value().round() as i32;
             value_for_change.set_label(&format!("{size} px"));
             thumbnail_size_for_change.set(size);
+            crate::ui::preferences::PreferenceManager::shared().set_icons_thumbnail_size(size);
             if let (Some(stack), Some(context)) =
                 (loading_stack.upgrade(), loading_context.upgrade())
             {
@@ -2023,6 +2039,7 @@ fn build_icons_pane(
         section: pane_section,
         sections,
         icons: Some(context),
+        thumbnail_scale: Some(controls.thumbnail_scale),
         targets,
         detached: Rc::new(Cell::new(false)),
         loading: super::loading_skeleton::DelayedLoading::new(&stack),
@@ -2970,6 +2987,7 @@ fn build_list_pane(
         section,
         sections,
         icons: None,
+        thumbnail_scale: None,
         targets,
         detached: Rc::new(Cell::new(false)),
         loading: super::loading_skeleton::DelayedLoading::new(&stack),

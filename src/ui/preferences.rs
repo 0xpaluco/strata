@@ -17,6 +17,8 @@ use crate::{
     services::{Channel, CrossVolumeDropStrategy},
 };
 
+use super::icons_cell::{MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE};
+
 mod bindings;
 #[cfg(test)]
 pub(in crate::ui) mod fixtures;
@@ -118,6 +120,8 @@ pub(in crate::ui) struct Preferences {
     auto_refresh_interval: u32,
     #[serde(default = "crate::sandbox::browser::default_worker_limit")]
     thumbnail_workers: usize,
+    #[serde(default = "default_icons_thumbnail_size")]
+    icons_thumbnail_size: i32,
     #[serde(default = "default_cross_volume_drop_strategy")]
     cross_volume_drop_strategy: String,
     #[serde(default)]
@@ -182,6 +186,7 @@ impl Default for Preferences {
             preview_autoplay: false,
             auto_refresh_interval: 0,
             thumbnail_workers: crate::sandbox::browser::default_worker_limit(),
+            icons_thumbnail_size: default_icons_thumbnail_size(),
             cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             open_folder_after_drop: false,
             date_format: default_date_format(),
@@ -263,6 +268,10 @@ fn default_full_volume() -> f64 {
     1.0
 }
 
+fn default_icons_thumbnail_size() -> i32 {
+    64
+}
+
 fn default_date_format() -> String {
     crate::util::DateFormat::default().as_str().to_owned()
 }
@@ -310,6 +319,9 @@ impl PreferenceManager {
         preferences.thumbnail_workers = preferences
             .thumbnail_workers
             .clamp(1, crate::sandbox::browser::MAX_WORKERS);
+        preferences.icons_thumbnail_size = preferences
+            .icons_thumbnail_size
+            .clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
         super::motion::set_reduce_motion(preferences.reduce_motion);
         crate::util::set_date_format(crate::util::DateFormat::parse(&preferences.date_format));
 
@@ -659,6 +671,16 @@ impl PreferenceManager {
     pub fn set_thumbnail_workers(&self, workers: usize) {
         self.preferences.borrow_mut().thumbnail_workers =
             workers.clamp(1, crate::sandbox::browser::MAX_WORKERS);
+        self.save_preferences();
+    }
+
+    pub fn icons_thumbnail_size(&self) -> i32 {
+        self.preferences.borrow().icons_thumbnail_size
+    }
+
+    pub fn set_icons_thumbnail_size(&self, size: i32) {
+        self.preferences.borrow_mut().icons_thumbnail_size =
+            size.clamp(MIN_ICONS_THUMBNAIL_SIZE, MAX_ICONS_THUMBNAIL_SIZE);
         self.save_preferences();
     }
 
