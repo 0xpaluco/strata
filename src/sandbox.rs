@@ -107,6 +107,7 @@ pub(crate) enum ParseOperation {
     },
     MediaMetadata,
     PreviewWorkbook,
+    PreviewDocument,
     PreviewPdf(PdfRenderSize),
     PreviewMedia(MediaPreviewSize),
     ArchiveList {
@@ -130,6 +131,7 @@ impl ParseOperation {
             Self::DocumentMath { display: false } => "document-inline-math",
             Self::MediaMetadata => "media-metadata",
             Self::PreviewWorkbook => "preview-workbook",
+            Self::PreviewDocument => "preview-document",
             Self::PreviewPdf(_) => "preview-pdf",
             Self::PreviewMedia(_) => "preview-media",
             Self::ArchiveList { .. } => "archive-list",
@@ -141,7 +143,10 @@ impl ParseOperation {
     }
 
     fn output_name(&self) -> &'static str {
-        if matches!(self, Self::MediaMetadata | Self::PreviewWorkbook) {
+        if matches!(
+            self,
+            Self::MediaMetadata | Self::PreviewWorkbook | Self::PreviewDocument
+        ) {
             "result.json"
         } else if self.is_media() {
             "result.media"
@@ -167,6 +172,7 @@ impl ParseOperation {
             Self::PreviewMedia(_)
             | Self::MediaMetadata
             | Self::PreviewWorkbook
+            | Self::PreviewDocument
             | Self::ArchiveList { .. } => None,
         }
     }
@@ -179,6 +185,7 @@ impl ParseOperation {
             | Self::PreviewImage
             | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
             Self::PreviewWorkbook => Some(crate::services::table::WORKBOOK_BYTE_LIMIT),
+            Self::PreviewDocument => Some(crate::services::docx::DOCX_BYTE_LIMIT),
             Self::DocumentImage => Some(crate::services::document_media::IMAGE_INPUT_LIMIT),
             Self::DocumentMermaid => {
                 Some(crate::services::document_media::DIAGRAM_INPUT_LIMIT as u64)
@@ -659,6 +666,9 @@ pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
 fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
     if matches!(operation, ParseOperation::PreviewWorkbook) {
         return crate::services::table::TableData::from_json(data).is_ok();
+    }
+    if matches!(operation, ParseOperation::PreviewDocument) {
+        return crate::services::docx::RichTextData::from_json(data).is_ok();
     }
     if matches!(operation, ParseOperation::MediaMetadata) {
         data.len() as u64 <= metadata::MAX_METADATA_BYTES

@@ -56,7 +56,9 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     let (content_type, uncertain) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
     let content = crate::services::content_family(&content_type);
-    if crate::services::table::is_workbook(&content_type, &entry.native_name) {
+    if crate::services::table::is_workbook(&content_type, &entry.native_name)
+        || crate::services::docx::is_document(&content_type, &entry.native_name)
+    {
         return entry.location.native_path().is_some();
     }
     if entry.location.native_path().is_none()
@@ -888,7 +890,7 @@ impl PreviewState {
                     | PreviewContent::Media
                     | PreviewContent::SandboxedMedia { .. }
                     | PreviewContent::Archive { .. }
-                    | PreviewContent::Workbook { .. }
+                    | PreviewContent::Rendered { .. }
                     | PreviewContent::Unsupported => {
                         self.dismiss_print_progress();
                         show_print_error(parent.as_ref(), "This file type cannot be printed.");
@@ -1181,7 +1183,7 @@ impl PreviewState {
                     warnings,
                 );
             }
-            PreviewContent::Workbook { document, warnings } => {
+            PreviewContent::Rendered { document, warnings } => {
                 let (view, _) =
                     super::virtual_preview::rendered_document(document, warnings, false, None);
                 self.content.append(&view);
