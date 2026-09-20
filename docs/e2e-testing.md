@@ -13,6 +13,22 @@ checks both what the window reports and what happened on disk.
 ./scripts/e2e.sh -k "clipboard and columns"
 ```
 
+### Temporarily quarantined regressions
+
+Known native-menu failures are tracked in [#1154](https://github.com/lgse/strata/issues/1154).
+The owner authorized temporary skips, not a claim that the underlying behavior is
+fixed. `tests/e2e/quarantined.json` lists explicit test selectors. A function ID
+quarantines all its parameter variants; an ID including `[parameters]` selects
+only that case. The owner authorized quarantining the menu-dependent groups
+because the lifecycle failures move between variants across runs. Unrelated
+functions remain enabled, and skipped cases remain visible in pytest/CI reports.
+
+Use `./scripts/e2e.sh --run-quarantined <test-path> -k <selection>` to reproduce a
+quarantined case without editing the list. For an ignored Rust case, use
+`./scripts/test-headless.py <fully-qualified-test-name> -- --ignored --exact`.
+Remove each entry/ignore attribute once the original regression passes with its
+assertions intact; record the repair evidence in the issue.
+
 ### Targeted local validation
 
 Choose checks from the behavior and caller mapping, not from changed-file names
