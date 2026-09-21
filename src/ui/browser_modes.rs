@@ -200,6 +200,22 @@ pub(in crate::ui) struct ActiveModeRename {
     viewport_tick: Option<gtk::TickCallbackId>,
 }
 
+impl ActiveModeRename {
+    pub(in crate::ui) fn new(
+        entry: FileEntry,
+        field: gtk::Entry,
+        label: gtk::Widget,
+        viewport_tick: Option<gtk::TickCallbackId>,
+    ) -> Self {
+        Self {
+            entry,
+            field,
+            label,
+            viewport_tick,
+        }
+    }
+}
+
 struct BoundModeItem {
     item: glib::WeakRef<gtk::ListItem>,
     widget: glib::WeakRef<gtk::Widget>,
@@ -304,9 +320,10 @@ pub struct ModeViews {
     list_click_activation: Rc<Cell<ClickActivation>>,
     transfer_handler: TransferHandlerSlot,
     cut_locations: Rc<RefCell<HashSet<Location>>>,
-    context_state: RefCell<Option<Weak<super::browser::ViewState>>>,
+    context_state: Rc<RefCell<Option<Weak<super::browser::ViewState>>>>,
     new_folder_state: RefCell<Option<Weak<super::browser::ViewState>>>,
     active_rename: Rc<RefCell<Option<ActiveModeRename>>>,
+    search_selection_handlers: super::inline_search::SearchSelectionHandlers,
     mode: BrowserMode,
     density: BrowserDensity,
     group_by_type: bool,
@@ -380,9 +397,10 @@ impl ModeViews {
             ))),
             transfer_handler: Rc::new(RefCell::new(None)),
             cut_locations: Rc::new(RefCell::new(HashSet::new())),
-            context_state: RefCell::new(None),
+            context_state: Rc::new(RefCell::new(None)),
             new_folder_state: RefCell::new(None),
             active_rename: Rc::new(RefCell::new(None)),
+            search_selection_handlers: Rc::new(RefCell::new(Vec::new())),
             mode: BrowserMode::Columns,
             density: BrowserDensity::Compact,
             group_by_type: false,
@@ -423,6 +441,12 @@ impl ModeViews {
             BrowserMode::Columns => None,
             BrowserMode::Icons => self.icons_panes.first(),
             BrowserMode::List => self.list_pane.as_ref(),
+        }
+    }
+
+    pub fn refresh_source_filter(&self) {
+        for pane in self.visible_panes() {
+            pane.search.refresh_source_filter(&self.browser);
         }
     }
 
@@ -602,6 +626,7 @@ impl ModeViews {
     ) -> Vec<gtk::Widget> {
         let mut labels = Vec::new();
         for pane in self.all_panes() {
+            labels.extend(pane.search.rename_label_widgets(old_location, new_location));
             for section in pane.item_sections() {
                 section.bound_items.borrow_mut().retain(|bound| {
                     let (Some(item), Some(_widget)) =
@@ -705,6 +730,24 @@ impl ModeViews {
                 .filter(|row| row.is_mapped() && row.is_ancestor(&section.view))
         });
         Some((position, row))
+    }
+
+    pub fn begin_search_rename(&self, depth: usize, entry: &FileEntry) -> bool {
+        let pane = match self.mode {
+            BrowserMode::Columns => return false,
+            BrowserMode::Icons => self.icons_panes.iter().find(|pane| pane.depth == depth),
+            BrowserMode::List => self.list_pane.as_ref().filter(|pane| pane.depth == depth),
+        };
+        let Some(pane) = pane else {
+            return false;
+        };
+        self.cancel_rename();
+        pane.search.begin_rename(
+            entry,
+            self.active_rename.clone(),
+            Rc::downgrade(&self.browser),
+            self.context_state.borrow().clone().unwrap_or_default(),
+        )
     }
 
     pub fn begin_rename(&self, depth: usize, source_position: usize, entry: &FileEntry) -> bool {
@@ -853,7 +896,8 @@ impl ModeViews {
             .iter()
             .chain(self.list_pane.iter())
             .any(|pane| {
-                focused.as_ref() == Some(pane.stack.upcast_ref())
+                pane.search.has_item_focus(focused.as_ref())
+                    || focused.as_ref() == Some(pane.stack.upcast_ref())
                     || pane
                         .all_sections()
                         .iter()
@@ -1076,6 +1120,13 @@ impl ModeViews {
 
     pub fn set_context_state(&self, state: Weak<super::browser::ViewState>) {
         self.context_state.replace(Some(state));
+    }
+
+    pub fn connect_search_selection_changed(
+        &self,
+        handler: super::inline_search::SearchSelectionChanged,
+    ) {
+        self.search_selection_handlers.borrow_mut().push(handler);
     }
 
     pub fn set_cut_locations(&self, locations: &[Location]) {
@@ -1470,9 +1521,14 @@ impl ModeViews {
                     continue;
                 };
                 if let Some(bounds) = widget.compute_bounds(&section.view) {
+                    let x = if self.mode == BrowserMode::List {
+                        bounds.center().x()
+                    } else {
+                        bounds.x() + bounds.width()
+                    };
                     return Some((
                         section.item_context_trigger.clone(),
-                        f64::from(bounds.center().x()),
+                        f64::from(x),
                         f64::from(bounds.center().y()),
                     ));
                 }
@@ -1528,6 +1584,8 @@ impl ModeViews {
             IconsOptions {
                 state: self.context_state.borrow().clone(),
                 new_folder_state: self.new_folder_state.borrow().clone(),
+                search_selection_handlers: self.search_selection_handlers.clone(),
+                search_context_state: self.context_state.clone(),
                 thumbnail_size: self.icons_thumbnail_size.clone(),
                 group_by_type: false,
                 density: self.density,
@@ -1563,6 +1621,8 @@ impl ModeViews {
             ListOptions {
                 state: self.context_state.borrow().clone(),
                 new_folder_state: self.new_folder_state.borrow().clone(),
+                search_selection_handlers: self.search_selection_handlers.clone(),
+                search_context_state: self.context_state.clone(),
                 group_by_type: self.grouping_for_snapshot(depth, &snapshot),
             },
             depth,
@@ -1596,12 +1656,16 @@ fn pane_holds_keyboard_focus(pane: &Pane) -> bool {
 struct ListOptions {
     state: Option<Weak<super::browser::ViewState>>,
     new_folder_state: Option<Weak<super::browser::ViewState>>,
+    search_selection_handlers: super::inline_search::SearchSelectionHandlers,
+    search_context_state: Rc<RefCell<Option<Weak<super::browser::ViewState>>>>,
     group_by_type: bool,
 }
 
 struct IconsOptions {
     state: Option<Weak<super::browser::ViewState>>,
     new_folder_state: Option<Weak<super::browser::ViewState>>,
+    search_selection_handlers: super::inline_search::SearchSelectionHandlers,
+    search_context_state: Rc<RefCell<Option<Weak<super::browser::ViewState>>>>,
     thumbnail_size: Rc<Cell<i32>>,
     group_by_type: bool,
     density: BrowserDensity,
@@ -1612,6 +1676,59 @@ struct ModeClickOptions {
     previews: Rc<Cell<bool>>,
     activation: Rc<Cell<ClickActivation>>,
     multiple_selection: Rc<Cell<bool>>,
+}
+
+fn search_collection_options(
+    presentation: super::inline_search::SearchPresentation,
+    browser: &Rc<Browser>,
+    multiple_selection: Rc<Cell<bool>>,
+    selection_handlers: super::inline_search::SearchSelectionHandlers,
+    context_state: Rc<RefCell<Option<Weak<super::browser::ViewState>>>>,
+) -> super::inline_search::SearchCollectionOptions {
+    let weak_browser = Rc::downgrade(browser);
+    let activate = Rc::new(move |entry: FileEntry| {
+        let Some(browser) = weak_browser.upgrade() else {
+            return;
+        };
+        if entry.is_directory() {
+            browser.navigate(entry.location);
+        } else {
+            browser.open_location(entry.location);
+        }
+    });
+    let weak_browser = Rc::downgrade(browser);
+    let single_click = Rc::new(move |entry: FileEntry| {
+        let Some(browser) = weak_browser.upgrade() else {
+            return;
+        };
+        if browser.is_chooser_mode() {
+            if entry.is_directory() {
+                browser.navigate(entry.location);
+            }
+        } else if entry.is_directory() {
+            browser.navigate(entry.location);
+        } else {
+            browser.open_location(entry.location);
+        }
+    });
+    let focus_items = Rc::new(move || {
+        if let Some(state) = context_state.borrow().as_ref().and_then(Weak::upgrade) {
+            super::browser::claim_keyboard_navigation(&state);
+        }
+    });
+    let selection_changed = Rc::new(move |entries: Vec<FileEntry>| {
+        for handler in selection_handlers.borrow().iter() {
+            handler(entries.clone());
+        }
+    });
+    super::inline_search::SearchCollectionOptions {
+        presentation,
+        multiple_selection,
+        activate,
+        single_click,
+        selection_changed,
+        focus_items,
+    }
 }
 
 pub(in crate::ui) fn finish_mode_rename(rename: ActiveModeRename) {
@@ -1645,7 +1762,7 @@ fn submit_mode_rename(
     }
 }
 
-fn install_mode_rename_handlers(
+pub(in crate::ui) fn install_mode_rename_handlers(
     field: &gtk::Entry,
     active: Rc<RefCell<Option<ActiveModeRename>>>,
     browser: Weak<Browser>,
@@ -1852,6 +1969,7 @@ fn build_icons_pane(
     title: &str,
 ) -> Pane {
     let location = browser.location_at(depth);
+    let search_selection_handlers = options.search_selection_handlers.clone();
     let controls = icons_controls(&browser, depth, options.thumbnail_size.get());
     if let Some(state) = options.new_folder_state {
         controls
@@ -2023,6 +2141,16 @@ fn build_icons_pane(
             .location_at(depth)
             .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
         &context.browser,
+        search_collection_options(
+            super::inline_search::SearchPresentation::Icons {
+                thumbnail_size: context.thumbnail_size.clone(),
+                max_columns: density_icons_columns(context.density.get()),
+            },
+            &context.browser,
+            context.click.multiple_selection.clone(),
+            search_selection_handlers,
+            options.search_context_state.clone(),
+        ),
     );
     content.append(&search.widget);
     marquee.add_origin_surface(&header);
@@ -2413,6 +2541,8 @@ fn ensure_icons_card_slot(card: &gtk::Box, thumbnail_size: i32) {
 }
 
 fn configure_icons_density(pane: &Pane, density: BrowserDensity) {
+    pane.search
+        .set_icons_max_columns(density_icons_columns(density));
     if let Some(loading) = pane.stack.child_by_name("loading")
         && let Some(scroll) = loading.first_child().and_downcast::<gtk::ScrolledWindow>()
         && let Some(icons) = scroll.child().and_downcast::<gtk::GridView>()
@@ -2745,6 +2875,7 @@ fn build_list_pane(
     title: &str,
 ) -> Pane {
     let location = browser.location_at(depth);
+    let search_selection_handlers = options.search_selection_handlers.clone();
     let navigation = list_navigation(&browser);
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     actions.add_css_class("icons-header-actions");
@@ -2906,7 +3037,7 @@ fn build_list_pane(
         &browser,
         depth,
         source_index.clone(),
-        click_options.multiple_selection,
+        click_options.multiple_selection.clone(),
     );
     if let Some(state) = options.state.as_ref().and_then(Weak::upgrade) {
         section.item_context_trigger = install_section_context_menu(
@@ -2972,6 +3103,13 @@ fn build_list_pane(
             .location_at(depth)
             .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
         &browser,
+        search_collection_options(
+            super::inline_search::SearchPresentation::Rows,
+            &browser,
+            click_options.multiple_selection.clone(),
+            search_selection_handlers,
+            options.search_context_state.clone(),
+        ),
     );
     content.append(&search.widget);
     let pane = Pane {
@@ -3613,6 +3751,10 @@ fn install_modified_selection_click(
     let click = gtk::GestureClick::new();
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let modified_press = Rc::new(Cell::new(false));
+    let modified_press_for_pressed = modified_press.clone();
+    let modified_press_for_cancel = modified_press.clone();
+    let modified_press_for_release = modified_press.clone();
     let item = item.downgrade();
     let weak_state_for_pressed = weak_state.clone();
     click.connect_pressed(move |gesture, _, x, y| {
@@ -3632,6 +3774,7 @@ fn install_modified_selection_click(
         let modifiers = gesture.current_event_state();
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        modified_press_for_pressed.set(control || shift);
         let selected_before = selection.is_selected(position);
         let selected_count_before = selection.selection().size();
         slow_click.was_selected.set(selected_before);
@@ -3670,19 +3813,17 @@ fn install_modified_selection_click(
         {
             item_widget.grab_focus();
         }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
     });
     let weak_state_for_cancel = weak_state.clone();
     click.connect_cancel(move |_, _| {
+        modified_press_for_cancel.set(false);
         if let Some(state) = weak_state_for_cancel.upgrade() {
             state.cancel_click_rename();
         }
     });
-    click.connect_released(|gesture, _, _, _| {
-        if gesture
-            .current_event_state()
-            .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
-        {
+    click.connect_released(move |gesture, _, _, _| {
+        // Leave the sequence available to a marquee until the click completes.
+        if modified_press_for_release.replace(false) {
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
     });
